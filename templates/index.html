@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Myntra Product Scraper Tool</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1>Myntra Product Scraper Tool</h1>
+
+        <p class="subtitle">
+            Upload a CSV file containing Myntra product IDs and generate structured JSON output.
+        </p>
+
+        <div class="card">
+            <h2>Upload Product CSV</h2>
+
+            <form id="uploadForm">
+                <label for="csvFile">Choose CSV File</label>
+                <input type="file" id="csvFile" name="file" accept=".csv" required>
+
+                <label for="maxProducts">Max products for testing</label>
+                <input type="number" id="maxProducts" placeholder="Example: 5">
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="includeDelivery">
+                    Include delivery check bonus
+                </label>
+
+                <p class="hint">
+                    Delivery check is optional and slower because it checks Bengaluru, Mumbai, Delhi, Ahmedabad, and Kolkata pincodes.
+                </p>
+
+                <button type="submit">Start Scraping</button>
+            </form>
+
+            <p id="statusMessage"></p>
+        </div>
+
+        <div class="card">
+            <h2>Actions</h2>
+
+            <button onclick="scrapeDefault()">Scrape Default CSV</button>
+            <button onclick="downloadOutput()">Download JSON Output</button>
+        </div>
+
+        <div class="card">
+            <h2>Results</h2>
+
+            <div class="summary" id="summary"></div>
+
+            <div class="table-wrapper">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Product ID</th>
+                            <th>Title</th>
+                            <th>Rating</th>
+                            <th>Total Ratings</th>
+                            <th>Category</th>
+                            <th>Delivery Checks</th>
+                            <th>Status</th>
+                            <th>Error</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <h3>Raw JSON Output</h3>
+            <pre id="jsonOutput">No results yet.</pre>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById("uploadForm");
+        const statusMessage = document.getElementById("statusMessage");
+        const summary = document.getElementById("summary");
+        const tableBody = document.querySelector("#resultsTable tbody");
+        const jsonOutput = document.getElementById("jsonOutput");
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const fileInput = document.getElementById("csvFile");
+            const maxProductsInput = document.getElementById("maxProducts");
+            const includeDeliveryInput = document.getElementById("includeDelivery");
+
+            if (!fileInput.files.length) {
+                statusMessage.textContent = "Please select a CSV file.";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            let url = "/scrape";
+            const params = new URLSearchParams();
+
+            if (maxProductsInput.value) {
+                params.append("max_products", maxProductsInput.value);
+            }
+
+            if (includeDeliveryInput.checked) {
+                params.append("include_delivery", "true");
+            }
+
+            if (params.toString()) {
+                url += "?" + params.toString();
+            }
+
+            statusMessage.textContent = "Scraping started. Please wait...";
+            tableBody.innerHTML = "";
+            summary.innerHTML = "";
+            jsonOutput.textContent = "Processing...";
+
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || "Something went wrong");
+                }
+
+                renderResults(data);
+                statusMessage.textContent = "Scraping completed.";
+
+            } catch (error) {
+                statusMessage.textContent = "Error: " + error.message;
+                jsonOutput.textContent = error.message;
+            }
+        });
+
+        async function scrapeDefault() {
+            const maxProductsInput = document.getElementById("maxProducts");
+            const includeDeliveryInput = document.getElementById("includeDelivery");
+
+            let url = "/scrape-default";
+            const params = new URLSearchParams();
+
+            if (maxProductsInput.value) {
+                params.append("max_products", maxProductsInput.value);
+            }
+
+            if (includeDeliveryInput.checked) {
+                params.append("include_delivery", "true");
+            }
+
+            if (params.toString()) {
+                url += "?" + params.toString();
+            }
+
+            statusMessage.textContent = "Scraping default CSV started. Please wait...";
+            tableBody.innerHTML = "";
+            summary.innerHTML = "";
+            jsonOutput.textContent = "Processing...";
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || "Something went wrong");
+                }
+
+                renderResults(data);
+                statusMessage.textContent = "Scraping completed.";
+
+            } catch (error) {
+                statusMessage.textContent = "Error: " + error.message;
+                jsonOutput.textContent = error.message;
+            }
+        }
+
+        function renderResults(data) {
+            summary.innerHTML = `
+                <p><strong>Total Products:</strong> ${data.total_products}</p>
+                <p><strong>Successful:</strong> ${data.successful}</p>
+                <p><strong>Failed:</strong> ${data.failed}</p>
+                <p><strong>Output File:</strong> ${data.output_file}</p>
+            `;
+
+            tableBody.innerHTML = "";
+
+            data.results.forEach(item => {
+                const row = document.createElement("tr");
+
+                const deliveryCount = item.delivery_estimates
+                    ? item.delivery_estimates.length
+                    : 0;
+
+                row.innerHTML = `
+                    <td>${item.product_id || ""}</td>
+                    <td>${item.title || ""}</td>
+                    <td>${item.rating || ""}</td>
+                    <td>${item.total_ratings_count || ""}</td>
+                    <td>${item.category || ""}</td>
+                    <td>${deliveryCount}</td>
+                    <td>${item.status || ""}</td>
+                    <td>${item.error || ""}</td>
+                `;
+
+                tableBody.appendChild(row);
+            });
+
+            jsonOutput.textContent = JSON.stringify(data, null, 4);
+        }
+
+        function downloadOutput() {
+            window.location.href = "/download-output";
+        }
+    </script>
+
+</body>
+</html>
